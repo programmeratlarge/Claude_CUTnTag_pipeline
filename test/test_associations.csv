@@ -1,0 +1,11 @@
+sample_id,species,genome,antibody,condition,replicate,group_id,is_control,control_group_id,merge_group_id,peak_calling_mode,notes
+H3K27ac_WT_R1,human,hg38,H3K27ac,WT,1,grp_H3K27ac_WT_R1,false,grp_IgG_WT,merge_H3K27ac_WT,narrow,
+H3K27ac_WT_R2,human,hg38,H3K27ac,WT,2,grp_H3K27ac_WT_R2,false,grp_IgG_WT,merge_H3K27ac_WT,narrow,
+H3K27ac_KO_R1,human,hg38,H3K27ac,KO,1,grp_H3K27ac_KO_R1,false,grp_IgG_KO,merge_H3K27ac_KO,narrow,
+H3K27ac_KO_R2,human,hg38,H3K27ac,KO,2,grp_H3K27ac_KO_R2,false,grp_IgG_KO,merge_H3K27ac_KO,narrow,
+H3K27me3_WT_R1,human,hg38,H3K27me3,WT,1,grp_H3K27me3_WT_R1,false,grp_IgG_WT,merge_H3K27me3_WT,broad,
+H3K27me3_WT_R2,human,hg38,H3K27me3,WT,2,grp_H3K27me3_WT_R2,false,grp_IgG_WT,merge_H3K27me3_WT,broad,
+IgG_WT_R1,human,hg38,IgG,WT,1,grp_IgG_WT,true,,,auto,IgG control for WT
+IgG_WT_R2,human,hg38,IgG,WT,2,grp_IgG_WT,true,,,auto,IgG control for WT
+IgG_KO_R1,human,hg38,IgG,KO,1,grp_IgG_KO,true,,,auto,IgG control for KO
+IgG_KO_R2,human,hg38,IgG,KO,2,grp_IgG_KO,true,,,auto,IgG control for KO

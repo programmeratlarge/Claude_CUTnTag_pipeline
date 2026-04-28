@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CUT&Tag association_csv schema",
+  "type": "object",
+  "description": "Validation schema for one row of the user-provided association_csv.",
+  "required": [
+    "sample_id", "species", "genome", "antibody", "condition",
+    "replicate", "group_id", "is_control", "control_group_id",
+    "merge_group_id", "peak_calling_mode", "notes"
+  ],
+  "properties": {
+    "sample_id":         { "type": "string", "minLength": 1, "description": "Must match FASTQ-derived sample ID." },
+    "species":           { "type": "string", "examples": ["human","mouse","rat","custom"] },
+    "genome":            { "type": "string", "examples": ["hg38","mm10","rn6","custom"] },
+    "antibody":          { "type": "string", "examples": ["H3K27ac","H3K4me3","H3K27me3","CTCF","IgG","Input"] },
+    "condition":         { "type": "string" },
+    "replicate":         { "type": "string", "examples": ["1","2","R1"] },
+    "group_id":          { "type": "string", "minLength": 1 },
+    "is_control":        { "type": "string", "pattern": "^(?i)(true|false)$" },
+    "control_group_id":  { "type": "string" },
+    "merge_group_id":    { "type": "string" },
+    "peak_calling_mode": { "type": "string", "enum": ["narrow","broad","auto",""] },
+    "notes":             { "type": "string" }
+  },
+  "additionalProperties": false
+}

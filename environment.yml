@@ -1,0 +1,25 @@
+name: cuttag-dsl2
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - fastqc=0.12.1
+  - multiqc=1.25.1
+  - cutadapt=4.9
+  - bowtie2=2.5.4
+  - samtools=1.20
+  - bedtools=2.31.1
+  - picard=3.2.0
+  - umi_tools=1.1.5
+  - deeptools=3.5.5
+  - macs3=3.0.2
+  - ucsc-bigwigtobedgraph
+  - r-base=4.4.1
+  - r-optparse
+  - bioconductor-chipseeker=1.40.0
+  - bioconductor-genomicfeatures
+  - bioconductor-rtracklayer
+  - r-ggplot2
