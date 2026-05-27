@@ -2,6 +2,13 @@
  * Aggregate QC metrics with MultiQC.
  * `stage` is a string ('raw','trimmed','alignment','final') used for naming.
  * `custom_content` is a list of *_mqc.{tsv,yaml,json} files (may be empty).
+ *
+ * MultiQC's output naming convention when invoked with --filename FOO.html:
+ *   FOO.html             (report)
+ *   FOO_data/            (data tables — always written)
+ *   FOO_plots/           (static plots — written when export_plots: true)
+ * So with --filename multiqc_<stage>_report.html the directories are
+ * multiqc_<stage>_report_data and multiqc_<stage>_report_plots.
  */
 
 process MULTIQC {
@@ -15,11 +22,11 @@ process MULTIQC {
     path custom_content
 
     output:
-    path "multiqc_${stage}_report.html", emit: report
-    path "multiqc_${stage}_data",        emit: data
+    path "multiqc_${stage}_report.html",       emit: report
+    path "multiqc_${stage}_report_data",       emit: data
+    path "multiqc_${stage}_report_plots", optional: true, emit: plots
 
     script:
-    def cc_dir_arg = custom_content ? '.' : '.'
     """
     multiqc \\
         --config ${mqc_config} \\

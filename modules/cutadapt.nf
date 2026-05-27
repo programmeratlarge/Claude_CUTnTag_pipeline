@@ -12,9 +12,6 @@ process CUTADAPT {
 
     input:
     tuple val(sample_id), val(meta), path(r1), path(r2)
-    val   adapter_fwd
-    val   adapter_rev
-    val   min_length
 
     output:
     tuple val(sample_id), val(meta), path("${sample_id}_R1.trim.fastq.gz"),
@@ -22,12 +19,15 @@ process CUTADAPT {
     tuple val(sample_id), val(meta), path("${sample_id}.cutadapt.log"),     emit: log
 
     script:
+    def adapter_fwd     = params.adapter_fwd      ?: 'CTGTCTCTTATACACATCT'
+    def adapter_rev     = params.adapter_rev      ?: 'CTGTCTCTTATACACATCT'
+    def min_read_length = params.min_read_length  ?: 20
     """
     cutadapt \\
         -j ${task.cpus} \\
         -a ${adapter_fwd} \\
         -A ${adapter_rev} \\
-        --minimum-length ${min_length} \\
+        --minimum-length ${min_read_length} \\
         -q 20 \\
         -o ${sample_id}_R1.trim.fastq.gz \\
         -p ${sample_id}_R2.trim.fastq.gz \\

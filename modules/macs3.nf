@@ -27,9 +27,6 @@ process MACS3_PER_SAMPLE {
 
     input:
     tuple val(sample_id), val(meta), path(bam), path(bai), path(ctrl_bams)
-    val   gsize
-    val   qvalue
-    val   allow_no_control
 
     output:
     tuple val(sample_id), val(meta), path("${sample_id}_peaks.{narrowPeak,broadPeak}"), emit: peaks
@@ -37,10 +34,13 @@ process MACS3_PER_SAMPLE {
     path "${sample_id}_*.{xls,bed,bdg}",                                                 optional: true, emit: extras
 
     script:
+    def gsize            = params.genome_size      ?: 'hs'
+    def qvalue           = params.macs_qvalue      ?: 0.05
+    def allow_no_control = (params.allow_no_control == true || params.allow_no_control == 'true')
     def mode  = infer_peak_mode(meta)
     def broad = mode == 'broad' ? '--broad --broad-cutoff 0.1' : ''
     def ctrl  = (ctrl_bams && ctrl_bams.size() > 0) ? "-c ${ctrl_bams.join(' ')}" : ''
-    if (!ctrl && !meta.is_control && allow_no_control == 'false' && meta.control_group_id) {
+    if (!ctrl && !meta.is_control && !allow_no_control && meta.control_group_id) {
         log.warn "[MACS3_PER_SAMPLE] ${sample_id} has control_group_id=${meta.control_group_id} but no control BAMs were resolved — falling back to no-control call (set --allow_no_control true to silence)"
     }
     """
@@ -66,9 +66,6 @@ process MACS3_GROUP {
 
     input:
     tuple val(merge_group_id), val(meta), path(treat_bam), path(treat_bai), path(ctrl_bam), path(ctrl_bai)
-    val   gsize
-    val   qvalue
-    val   allow_no_control
 
     output:
     tuple val(merge_group_id), val(meta), path("${merge_group_id}_peaks.{narrowPeak,broadPeak}"), emit: peaks
@@ -76,9 +73,11 @@ process MACS3_GROUP {
     path  "${merge_group_id}_*.{xls,bed,bdg}", optional: true, emit: extras
 
     script:
-    def mode  = infer_peak_mode(meta)
-    def broad = mode == 'broad' ? '--broad --broad-cutoff 0.1' : ''
-    def ctrl  = (ctrl_bam && ctrl_bam.size() > 0) ? "-c ${ctrl_bam}" : ''
+    def gsize  = params.genome_size  ?: 'hs'
+    def qvalue = params.macs_qvalue  ?: 0.05
+    def mode   = infer_peak_mode(meta)
+    def broad  = mode == 'broad' ? '--broad --broad-cutoff 0.1' : ''
+    def ctrl   = (ctrl_bam && ctrl_bam.size() > 0) ? "-c ${ctrl_bam}" : ''
     """
     macs3 callpeak \\
         -t ${treat_bam} ${ctrl} \\

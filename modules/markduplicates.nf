@@ -21,7 +21,8 @@ process MARK_DUPLICATES {
     script:
     def avail_mem = (task.memory ? task.memory.toGiga() : 8)
     """
-    picard -Xmx${avail_mem}g MarkDuplicates \\
+    # picard -Xmx${avail_mem}g MarkDuplicates \\
+    java -jar /programs/picard-tools-3.4.0/picard.jar MarkDuplicates \\
         I=${bam} \\
         O=${sample_id}.dedup.bam \\
         M=${sample_id}.markdup.metrics.txt \\

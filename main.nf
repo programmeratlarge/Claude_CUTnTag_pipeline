@@ -71,6 +71,46 @@ if (params.help) {
 }
 
 // ----------------------------------------------------------------------------
+// Defensive defaults for non-required params.
+// If the user's nextflow.config (or -c custom.config) omits any of these, fall
+// back here so the workflow doesn't propagate nulls into process scripts.
+// containsKey() is used instead of `params.X` to avoid triggering Nextflow's
+// "Access to undefined parameter" warning on the lookup itself.
+// ----------------------------------------------------------------------------
+def DEFAULTS = [
+    paired_pattern        : 'auto',
+    adapter_fwd           : 'CTGTCTCTTATACACATCT',
+    adapter_rev           : 'CTGTCTCTTATACACATCT',
+    min_read_length       : 20,
+    bowtie2_args          : '--end-to-end --very-sensitive --no-mixed --no-discordant --phred33 -I 10 -X 700',
+    mapq                  : 30,
+    mito_chroms           : 'chrM,MT,M,Mt,mitochondrion',
+    use_umi               : false,
+    umi_pattern           : 'NNNNNN',
+    macs_qvalue           : 0.05,
+    genome_size           : 'hs',
+    allow_no_control      : false,
+    bigwig_binsize        : 10,
+    bigwig_norm           : 'CPM',
+    effective_genome_size : 2913022398,
+    tss_window            : 3000,
+    peak_window           : 3000,
+    threads               : 8,
+    max_memory            : '64.GB',
+    max_cpus              : 16,
+    max_time              : '48.h',
+    publish_mode          : 'copy',
+    blacklist             : null,
+    slurm_partition       : 'regular',
+    slurm_account         : null,
+]
+DEFAULTS.each { k, v ->
+    if (!params.containsKey(k) || params[k] == null) {
+        params[k] = v
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Parameter validation
 // ----------------------------------------------------------------------------
 def required = [
@@ -159,7 +199,8 @@ workflow {
     VALIDATE_ASSOCIATIONS(
         DETECT_FASTQ_PAIRS.out.pairs_tsv,
         file(params.association_csv),
-        params.allow_no_control ? 'true' : 'false'
+        params.allow_no_control ? 'true' : 'false',
+        params.genome
     )
 
     // Read validated metadata into channels
@@ -206,14 +247,9 @@ workflow {
     )
 
     // -----------------------------
-    // Stage 2: adapter trimming
+    // Stage 2: adapter trimming (adapter sequences + min length read from params)
     // -----------------------------
-    CUTADAPT(
-        reads_with_meta_ch,
-        params.adapter_fwd,
-        params.adapter_rev,
-        params.min_read_length
-    )
+    CUTADAPT(reads_with_meta_ch)
 
     // FastQC on trimmed reads
     FASTQC_TRIM(
@@ -249,9 +285,7 @@ workflow {
     // -----------------------------
     FILTER_MITO_BLACKLIST(
         SAMTOOLS_SORT_INDEX.out.bam,
-        params.blacklist ? file(params.blacklist) : file("${projectDir}/assets/empty.bed"),
-        params.mito_chroms,
-        params.mapq
+        params.blacklist ? file(params.blacklist) : file("${projectDir}/assets/empty.bed")
     )
 
     // UMI dedup or Picard MarkDuplicates
@@ -274,14 +308,9 @@ workflow {
     )
 
     // -----------------------------
-    // Stage 5: BigWig + BedGraph
+    // Stage 5: BigWig + BedGraph (binsize / norm read from params inside the process)
     // -----------------------------
-    BAMCOVERAGE(
-        final_bam_ch,
-        params.bigwig_binsize,
-        params.bigwig_norm,
-        file(params.chrom_sizes)
-    )
+    BAMCOVERAGE(final_bam_ch, file(params.chrom_sizes))
 
     BIGWIG_TO_BEDGRAPH(BAMCOVERAGE.out.bigwig, file(params.chrom_sizes))
 
@@ -311,12 +340,7 @@ workflow {
 
     macs_input_ch = treat_with_ctrl_ch.mix(ctrl_for_peakcall_ch)
 
-    MACS3_PER_SAMPLE(
-        macs_input_ch,
-        params.genome_size,
-        params.macs_qvalue,
-        params.allow_no_control ? 'true' : 'false'
-    )
+    MACS3_PER_SAMPLE(macs_input_ch)
 
     // -----------------------------
     // Stage 7: group-level merge + group peak calling
@@ -366,12 +390,7 @@ workflow {
             tuple(mg, meta, tbam, tbai, cbam ?: [], cbai ?: [])
         }
 
-    MACS3_GROUP(
-        group_macs_input_ch,
-        params.genome_size,
-        params.macs_qvalue,
-        params.allow_no_control ? 'true' : 'false'
-    )
+    MACS3_GROUP(group_macs_input_ch)
 
     // Consensus peaks across all merged groups (per antibody)
     peaks_per_antibody_ch = MACS3_GROUP.out.peaks
@@ -396,11 +415,7 @@ workflow {
         .mix(group_peaks_for_annot)
         .mix(consensus_peaks_for_annot)
 
-    ANNOTATE_PEAKS(
-        all_peaks_for_annot,
-        file(params.annotation_gtf),
-        params.tss_window
-    )
+    ANNOTATE_PEAKS(all_peaks_for_annot, file(params.annotation_gtf))
 
     // -----------------------------
     // Stage 9: FRiP — per sample (vs own peaks, vs group peaks, vs consensus)
@@ -440,11 +455,7 @@ workflow {
             tuple(sids, bws)
         }
 
-    COMPUTE_MATRIX_TSS(
-        bw_collected_ch,
-        file(params.tss_bed),
-        params.tss_window
-    )
+    COMPUTE_MATRIX_TSS(bw_collected_ch, file(params.tss_bed))
 
     PLOT_PROFILE(COMPUTE_MATRIX_TSS.out.matrix, 'tss')
     PLOT_HEATMAP(COMPUTE_MATRIX_TSS.out.matrix, 'tss')
@@ -454,7 +465,7 @@ workflow {
         .combine(CONSENSUS_PEAKS.out.consensus)
         .map { sids, bws, ab, peaks -> tuple(sids, bws, ab, peaks) }
 
-    COMPUTE_MATRIX_PEAKS(peak_center_input_ch, params.peak_window)
+    COMPUTE_MATRIX_PEAKS(peak_center_input_ch)
 
     // -----------------------------
     // Stage 11: final MultiQC integrated report

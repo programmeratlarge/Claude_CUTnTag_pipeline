@@ -173,8 +173,24 @@ For human hg38, you need:
 
 ### 3. Stage your FASTQs and write your association CSV
 
-Place all `*_R1*.fastq.gz` / `*_R2*.fastq.gz` files in one directory (or use the
-example pattern of your sequencer; the pipeline auto-detects most layouts).
+Place your `*_R1*.fastq.gz` / `*_R2*.fastq.gz` files anywhere under `--input_dir` — the pipeline **recursively scans all subdirectories** (skipping hidden ones). A common layout is one subdirectory per sequencing run or lane:
+
+```
+fastq/
+├── runA/
+│   ├── lane1/SampleA_S1_L001_R1_001.fastq.gz
+│   └── lane1/SampleA_S1_L001_R2_001.fastq.gz
+├── runB/
+│   ├── SampleB_S2_L002_R1_001.fastq.gz
+│   └── SampleB_S2_L002_R2_001.fastq.gz
+└── runC/Sample_input.R1.fastq.gz  # different naming convention also OK
+```
+
+R1/R2 mates must live in the **same** directory. The recognized naming
+patterns are listed in the docstring of `bin/detect_fastq_pairs.py`. Sample IDs
+are derived from the R1 filename and must be unique across the whole tree; if
+the same sample appears in two subdirectories, `detect_fastq_pairs.py` fails
+with a clear error that lists every offending path.
 
 ### 4. Launch (Cornell BioHPC example)
 
@@ -321,6 +337,13 @@ outside Git/registry. See `test/README.md` for instructions.
 - **Empty peak set** → annotation/FRiP modules emit empty outputs but don't crash the workflow.
 
 All processes use `errorStrategy = retry` for transient failures (codes 130–145, 104, 125, 137, 139, 140) up to `maxRetries=2`. `-resume` works at every stage because outputs go to deterministic publish directories.
+
+### Troubleshooting
+
+- **`ERROR ~ Unknown method invocation `label` on _parse_closure...`** — caused by setting `label '...'` inside a config `withName` block. `label` is a process-body directive only; in config, override resources with `cpus`/`memory`/`time` directly, or use `withLabel: process_X { ... }` against the labels already declared in each module. The shipped `conf/base.config` does this correctly; if you've added a custom `withName` block and copied the wrong pattern, that's the cause.
+- **`Singularity command line option(s) not recognized` on BioHPC** — make sure `module load nextflow/25.4.3` is run before `nextflow run`. BioHPC's bundled Singularity 1.4 is found automatically once Nextflow is on `PATH`.
+- **`Cannot invoke method ... on null object` referencing `params.outdir`** — you're missing `--outdir` (or one of the other required flags). The pre-flight in `main.nf` should catch this with a clear message before that error appears; if it doesn't, you've probably edited `main.nf` and removed the validation block.
+- **Stuck at `DETECT_FASTQ_PAIRS`** — check `results/00_fastq_pairs/fastq_pairs.log`. Common causes: filenames don't match any of the recognized R1/R2 patterns, or two samples share the same derived `sample_id` after lane-suffix stripping.
 
 ---
 

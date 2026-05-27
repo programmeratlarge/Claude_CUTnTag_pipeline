@@ -10,17 +10,18 @@ process BAMCOVERAGE {
 
     input:
     tuple val(sample_id), val(meta), path(bam), path(bai)
-    val   binsize
-    val   norm_method
     path  chrom_sizes
 
     output:
     tuple val(sample_id), val(meta), path("${sample_id}.bw"), emit: bigwig
 
     script:
-    def norm_arg = (norm_method == 'None' || norm_method == 'none') ?
+    def binsize     = params.bigwig_binsize        ?: 10
+    def norm_method = params.bigwig_norm           ?: 'CPM'
+    def egs_val     = params.effective_genome_size ?: 2913022398
+    def norm_arg    = (norm_method == 'None' || norm_method == 'none') ?
         '' : "--normalizeUsing ${norm_method}"
-    def egs = norm_method == 'RPGC' ? "--effectiveGenomeSize ${params.effective_genome_size ?: 2913022398}" : ''
+    def egs         = norm_method == 'RPGC' ? "--effectiveGenomeSize ${egs_val}" : ''
     """
     bamCoverage \\
         -b ${bam} \\
@@ -48,7 +49,7 @@ process BIGWIG_TO_BEDGRAPH {
 
     script:
     """
-    bigWigToBedGraph ${bigwig} ${sample_id}.bedgraph
+    /workdir/tools/ucsc_tools/bigWigToBedGraph ${bigwig} ${sample_id}.bedgraph
     """
 }
 
@@ -59,12 +60,12 @@ process COMPUTE_MATRIX_TSS {
     input:
     tuple val(sample_ids), path(bigwigs)
     path  tss_bed
-    val   tss_window
 
     output:
     path 'tss_matrix.gz', emit: matrix
 
     script:
+    def tss_window = params.tss_window ?: 3000
     def labels = sample_ids.join(' ')
     """
     computeMatrix reference-point \\
@@ -86,12 +87,12 @@ process COMPUTE_MATRIX_PEAKS {
 
     input:
     tuple val(sample_ids), path(bigwigs), val(antibody), path(peaks_bed)
-    val peak_window
 
     output:
     tuple val(antibody), path("${antibody}_peaks_matrix.gz"), emit: matrix
 
     script:
+    def peak_window = params.peak_window ?: 3000
     def labels = sample_ids.join(' ')
     """
     computeMatrix reference-point \\

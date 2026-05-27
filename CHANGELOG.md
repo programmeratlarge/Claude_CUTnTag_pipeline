@@ -3,6 +3,41 @@
 All notable changes to `cuttag-dsl2` will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Genome filter**: `validate_associations.py` now drops CSV rows whose
+  `genome` column doesn't match the `--genome` parameter. This lets a single
+  association CSV cover multiple genomes; run the pipeline once per genome
+  with the corresponding references. FASTQ files corresponding to filtered
+  rows are skipped silently (with an INFO line in the validation log). The
+  validator fails loudly if `--genome` matches zero rows, listing the genomes
+  it did find — useful for catching `hg38` vs `GRCh38` typos.
+
+### Changed
+- `bin/detect_fastq_pairs.py` now searches `--input_dir` **recursively**,
+  including all subdirectories (hidden directories starting with `.` are
+  skipped). Behaviour is unchanged for flat layouts.
+- The pairs.log now lists every subdirectory that contained FASTQ files, and
+  duplicate-sample-ID errors list every offending file path (not just the
+  derived ID).
+
+### Fixed
+- **`A process input channel evaluates to null -- Invalid declaration 'val ...'`** at the `CUTADAPT` call (and would have fired downstream at MACS3, BAMCOVERAGE, etc.). The root cause was Nextflow 23.x having trouble auto-broadcasting multiple trailing `val` inputs against a queue channel that's reused by other processes upstream (e.g. `reads_with_meta_ch` consumed by both `FASTQC_RAW` and `CUTADAPT`). Refactored 7 modules to read `params.*` values directly inside the process script block instead of declaring them as `val` inputs: `CUTADAPT`, `FILTER_MITO_BLACKLIST`, `MACS3_PER_SAMPLE`, `MACS3_GROUP`, `BAMCOVERAGE`, `COMPUTE_MATRIX_TSS`, `COMPUTE_MATRIX_PEAKS`, `ANNOTATE_PEAKS`. Behaviour is unchanged; the value channels are eliminated, so the broadcast issue disappears.
+- `find_mate()` now anchors the R1→R2 substitution at the END of the filename.
+  Previously, sample names that themselves contained `_R1_` (e.g. a replicate
+  marker like `H3K27ac_WT_R1_S1_L001_R1_001.fastq.gz`) would have the WRONG
+  occurrence replaced, so the R2 mate was never found.
+- Orphan-R2 detection now compares full paths instead of bare filenames, so
+  two subdirectories containing R2 files with the same name no longer mask
+  each other.
+- `conf/base.config` no longer uses `withName: 'X' { label '...' }`, which
+  Nextflow rejects with "Unknown method invocation `label`". Labels are
+  declared in each module's process body, which is the only valid place.
+- `conf/slurm.config` no longer hard-codes `--account=default`; the partition
+  and account are now parameterised via `--slurm_partition` / `--slurm_account`
+  with defaults in the main params block.
+
 ## [1.0.0] — 2026-04
 
 ### Added

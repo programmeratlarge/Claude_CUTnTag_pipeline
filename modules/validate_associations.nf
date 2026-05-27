@@ -15,6 +15,7 @@ process VALIDATE_ASSOCIATIONS {
     path pairs_tsv
     path association_csv
     val  allow_no_control
+    val  genome
 
     output:
     path 'associations_validated.csv', emit: validated_csv
@@ -27,6 +28,7 @@ process VALIDATE_ASSOCIATIONS {
         --csv       ${association_csv} \\
         --out_csv   associations_validated.csv \\
         --log       associations_validation.log \\
-        --allow_no_control ${allow_no_control}
+        --allow_no_control ${allow_no_control} \\
+        --genome    '${genome}'
     """
 }

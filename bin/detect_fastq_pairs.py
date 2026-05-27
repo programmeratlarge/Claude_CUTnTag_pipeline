@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
 detect_fastq_pairs.py
-Scan a directory for paired-end FASTQ files, validate every R1 has a matching R2,
-and emit a TSV manifest plus a log file.
+Recursively scan a directory tree for paired-end FASTQ files, validate every R1
+has a matching R2, and emit a TSV manifest plus a log file.
+
+The search descends into ALL subdirectories under --input_dir. Hidden
+directories (those whose name starts with '.') are skipped. R2 mates are
+expected in the same directory as their R1 (standard sequencer layout); the
+script does NOT cross-link an R1 in one subdir to an R2 in another.
 
 Recognized R1/R2 patterns (all case-insensitive):
     *_R1*.fastq.gz / *_R2*.fastq.gz
@@ -17,7 +22,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, Iterator, List, Tuple
 
 EXTS = (".fastq.gz", ".fq.gz", ".fastq", ".fq")
 
@@ -26,23 +31,43 @@ R1_RE = [
     re.compile(r"^(?P<base>.+?)_1(?P<ext>\.f(ast)?q(\.gz)?)$", re.I),
     re.compile(r"^(?P<base>.+?)\.R1(?P<ext>\.f(ast)?q(\.gz)?)$", re.I),
 ]
-R2_TEMPLATES = [
-    ("R1", "R2"),  # the first capture-group naming
-    ("_1.", "_2."),
-    (".R1.", ".R2."),
+
+
+R2_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    # Each pattern matches the read-direction marker at the END of the filename
+    # (possibly followed by Illumina's _NNN block, e.g. _R1_001.fastq.gz).
+    # The first capture group is the part to replace; the second is the
+    # suffix that must be preserved.
+    (re.compile(r"_R1(_\d+)?(\.f(?:ast)?q(?:\.gz)?)$", re.I), "_R2"),
+    (re.compile(r"_1(\.f(?:ast)?q(?:\.gz)?)$",         re.I), "_2"),
+    (re.compile(r"\.R1(\.f(?:ast)?q(?:\.gz)?)$",       re.I), ".R2"),
 ]
 
 
 def find_mate(r1_path: Path) -> Path | None:
-    """Try to locate the matching R2 file for a given R1 file."""
+    """Locate the R2 mate of an R1 file by anchoring the R1→R2 substitution at
+    the END of the filename.
+
+    This avoids miscounting sample names that themselves contain '_R1_' as a
+    replicate marker (e.g. ``H3K27ac_WT_R1_S1_L001_R1_001.fastq.gz`` — only
+    the LAST ``_R1`` is the read-direction marker).
+    """
     name = r1_path.name
-    candidates = []
-    # Substitution-based: replace the first occurrence of R1/_1./.R1. with R2/_2./.R2.
-    for old, new in R2_TEMPLATES:
-        if old in name:
-            cand = r1_path.with_name(name.replace(old, new, 1))
-            if cand.exists():
-                candidates.append(cand)
+    candidates: List[Path] = []
+    for rx, replacement in R2_PATTERNS:
+        m = rx.search(name)
+        if not m:
+            continue
+        # Splice: name[:m.start()] + replacement + (groups after the marker)
+        # group(1) is the optional _NNN block (or None); group(-1) is always the extension
+        ext = m.group(m.lastindex)
+        mid = m.group(1) if m.lastindex >= 2 else ""
+        mid = mid or ""
+        cand_name = name[:m.start()] + replacement + mid + ext
+        cand = r1_path.with_name(cand_name)
+        if cand.exists():
+            candidates.append(cand)
+
     # De-duplicate while preserving order
     seen = set()
     deduped = []
@@ -86,6 +111,24 @@ def is_r2(name: str) -> bool:
     )
 
 
+def iter_fastq_files(root: Path) -> Iterator[Path]:
+    """Yield FASTQ files anywhere under ``root``, skipping hidden directories.
+
+    A directory is "hidden" if its name (any component of the path relative to
+    root) starts with '.'. The root itself is not subject to this rule.
+    """
+    for p in root.rglob("*"):
+        rel_parts = p.relative_to(root).parts
+        # Skip if any ancestor directory (not the file itself) is hidden
+        if any(part.startswith(".") for part in rel_parts[:-1]):
+            continue
+        if not p.is_file():
+            continue
+        if not any(p.name.lower().endswith(e) for e in EXTS):
+            continue
+        yield p
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input_dir", required=True)
@@ -104,42 +147,54 @@ def main() -> int:
     log_lines.append(f"# detect_fastq_pairs.py")
     log_lines.append(f"# input_dir = {in_dir}")
     log_lines.append(f"# pattern   = {args.pattern}")
+    log_lines.append(f"# search    = recursive (all subdirectories; hidden dirs skipped)")
 
-    all_files = sorted(p for p in in_dir.iterdir() if p.is_file()
-                       and any(p.name.lower().endswith(e) for e in EXTS))
+    all_files = sorted(iter_fastq_files(in_dir))
+    # Tally distinct subdirectories visited (for diagnostic clarity)
+    subdirs_seen = sorted({str(f.parent.relative_to(in_dir)) or "." for f in all_files})
+    log_lines.append(f"# subdirectories with FASTQs: {len(subdirs_seen)}")
+    for sd in subdirs_seen:
+        log_lines.append(f"#   {sd}")
     log_lines.append(f"# total FASTQ candidates: {len(all_files)}")
 
     pairs: List[Tuple[str, Path, Path, str]] = []
-    seen_r2: set = set()
+    seen_r2: set = set()        # set of resolved Path objects (NOT just names)
     skipped: List[str] = []
     warnings: List[str] = []
+
+    def rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(in_dir))
+        except ValueError:
+            return str(p)
 
     for f in all_files:
         if is_r2(f.name):
             continue
         if not is_r1(f.name):
-            skipped.append(f"SKIP (no R1 pattern match): {f.name}")
+            skipped.append(f"SKIP (no R1 pattern match): {rel(f)}")
             continue
         mate = find_mate(f)
         if mate is None:
-            warnings.append(f"WARN: no R2 mate found for {f.name}")
+            warnings.append(f"WARN: no R2 mate found for {rel(f)}")
             continue
         sample_id = derive_sample_id(f.name)
         pairs.append((sample_id, f, mate, "auto"))
-        seen_r2.add(mate.name)
+        seen_r2.add(mate.resolve())
 
-    # Detect ambiguous: R2 files not paired
+    # Detect ambiguous: R2 files not paired (by full path, since names can repeat across subdirs)
     for f in all_files:
-        if is_r2(f.name) and f.name not in seen_r2:
-            warnings.append(f"WARN: orphan R2 file (no R1 partner): {f.name}")
+        if is_r2(f.name) and f.resolve() not in seen_r2:
+            warnings.append(f"WARN: orphan R2 file (no R1 partner): {rel(f)}")
 
-    # Detect duplicate sample_ids
-    sample_counts: Dict[str, int] = {}
-    for s, _, _, _ in pairs:
-        sample_counts[s] = sample_counts.get(s, 0) + 1
-    duplicates = [k for k, v in sample_counts.items() if v > 1]
+    # Detect duplicate sample_ids — and list every file involved so the user can fix the layout
+    by_sample: Dict[str, List[Path]] = {}
+    for s, r1, _, _ in pairs:
+        by_sample.setdefault(s, []).append(r1)
+    duplicates = [k for k, v in by_sample.items() if len(v) > 1]
     for d in duplicates:
-        warnings.append(f"ERROR: duplicate sample_id derived: {d}")
+        files_listed = ", ".join(rel(p) for p in by_sample[d])
+        warnings.append(f"ERROR: duplicate sample_id '{d}' derived from: {files_listed}")
 
     # Write manifest
     with open(args.out_tsv, "w") as out:

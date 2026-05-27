@@ -15,8 +15,6 @@ process FILTER_MITO_BLACKLIST {
     input:
     tuple val(sample_id), val(meta), path(bam), path(bai)
     path  blacklist
-    val   mito_chroms_csv
-    val   mapq
 
     output:
     tuple val(sample_id), val(meta),
@@ -25,7 +23,9 @@ process FILTER_MITO_BLACKLIST {
     tuple val(sample_id), path("${sample_id}.filter_counts.tsv"), emit: counts
 
     script:
-    def mito_pattern = mito_chroms_csv.split(',').collect { "^${it}\$" }.join('|')
+    def mito_chroms = params.mito_chroms ?: 'chrM,MT,M,Mt,mitochondrion'
+    def mapq        = params.mapq         ?: 30
+    def mito_pattern = mito_chroms.split(',').collect { "^${it}\$" }.join('|')
     def blacklist_step = (blacklist.name == 'empty.bed' || blacklist.size() == 0) ?
         "cp ${sample_id}.nomito.bam ${sample_id}.preDup.bam" :
         "bedtools intersect -v -abam ${sample_id}.nomito.bam -b ${blacklist} > ${sample_id}.preDup.bam"

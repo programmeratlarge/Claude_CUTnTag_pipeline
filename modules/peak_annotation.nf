@@ -14,7 +14,6 @@ process ANNOTATE_PEAKS {
     input:
     tuple val(peakset_id), path(peaks)
     path  annotation_gtf
-    val   tss_window
 
     output:
     tuple val(peakset_id), path("${peakset_id}_annotation.tsv"), emit: annotation
@@ -23,6 +22,7 @@ process ANNOTATE_PEAKS {
     path  "${peakset_id}_anno_categories_mqc.tsv", emit: mqc
 
     script:
+    def tss_window = params.tss_window ?: 3000
     """
     annotate_peaks.R \\
         --peaks       ${peaks} \\
